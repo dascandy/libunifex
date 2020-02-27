@@ -21,6 +21,20 @@
 
 namespace unifex {
 
+inline constexpr struct async_accept_cpo {
+  template <typename AsyncSocket, typename BufferSequence>
+  auto operator()(AsyncSocket& socket) const
+      noexcept(is_nothrow_tag_invocable_v<
+               async_accept_cpo,
+               AsyncSocket&>)
+          -> tag_invoke_result_t<
+              async_accept_cpo,
+              AsyncSocket&> {
+    return unifex::tag_invoke(
+        *this, socket);
+  }
+} async_accept;
+
 inline constexpr struct async_read_some_at_cpo {
   template <typename AsyncFile, typename BufferSequence>
   auto operator()(
@@ -62,6 +76,36 @@ inline constexpr struct async_write_some_at_cpo {
         *this, file, offset, (BufferSequence &&) bufferSequence);
   }
 } async_write_some_at;
+
+inline constexpr struct open_socket_cpo {
+  template <typename Executor>
+  auto operator()(Executor&& executor, const std::string& target) const
+      noexcept(is_nothrow_tag_invocable_v<
+               open_socket_cpo,
+               Executor,
+               const std::string&>)
+          -> tag_invoke_result_t<
+              open_socket_cpo,
+              Executor,
+              const std::string&> {
+    return unifex::tag_invoke(*this, (Executor &&) executor, target);
+  }
+} open_socket;
+
+inline constexpr struct open_listen_socket_cpo {
+  template <typename Executor>
+  auto operator()(Executor&& executor, const std::string& path) const
+      noexcept(is_nothrow_tag_invocable_v<
+               open_listen_socket_cpo,
+               Executor,
+               const std::string&>)
+          -> tag_invoke_result_t<
+              open_listen_socket_cpo,
+              Executor,
+              const std::string&> {
+    return unifex::tag_invoke(*this, (Executor &&) executor, path);
+  }
+} open_listen_socket;
 
 inline constexpr struct open_file_read_only_cpo {
   template <typename Executor>

@@ -53,10 +53,13 @@ class io_uring_context {
   template <typename Duration>
   class schedule_after_sender;
   class read_sender;
+  class accept_sender;
   class write_sender;
   class async_read_only_file;
   class async_read_write_file;
   class async_write_only_file;
+  class async_socket;
+  class async_listen_socket;
   class scheduler;
 
   io_uring_context();
@@ -380,6 +383,103 @@ class io_uring_context::schedule_sender {
   io_uring_context& context_;
 };
 
+class io_uring_context::accept_sender {
+  template <typename Receiver>
+  class operation : private completion_base {
+    friend io_uring_context;
+
+   public:
+    template <typename Receiver2>
+    explicit operation(const accept_sender& sender, Receiver2&& r)
+        : context_(sender.context_),
+          fd_(sender.fd_),
+          receiver_((Receiver2 &&) r) {
+    }
+
+    void start() noexcept {
+      if (!context_.is_running_on_io_thread()) {
+        this->execute_ = &operation::on_schedule_complete;
+        context_.schedule_remote(this);
+      } else {
+        start_io();
+      }
+    }
+
+   private:
+    void populate_sqe(io_uring_sqe& sqe) noexcept {}
+
+    static void on_schedule_complete(operation_base* op) noexcept {
+      static_cast<operation*>(op)->start_io();
+    }
+
+    void start_io() noexcept {
+      assert(context_.is_running_on_io_thread());
+
+      auto populateSqe = [this](io_uring_sqe & sqe) noexcept {
+        sqe.opcode = IORING_OP_ACCEPT;
+        sqe.flags = 0;
+        sqe.ioprio = 0;
+        sqe.fd = fd_;
+        sqe.off = 0;
+        sqe.addr = 0;
+        sqe.len = 1;
+        sqe.rw_flags = 0;
+        sqe.user_data = reinterpret_cast<std::uintptr_t>(
+            static_cast<completion_base*>(this));
+        sqe.__pad2[0] = sqe.__pad2[1] = sqe.__pad2[2] = 0;
+
+        this->execute_ = &operation::on_read_complete;
+      };
+
+      if (!context_.try_submit_io(populateSqe)) {
+        this->execute_ = &operation::on_schedule_complete;
+        context_.schedule_pending_io(this);
+      }
+    }
+
+    static void on_read_complete(operation_base* op) noexcept {
+      auto& self = *static_cast<operation*>(op);
+      if (self.result_ >= 0) {
+        unifex::set_value(std::move(self.receiver_), async_socket{self.context_, self.result_});
+      } else if (self.result_ == -ECANCELED) {
+        unifex::set_done(std::move(self.receiver_));
+      } else {
+        unifex::set_error(
+            std::move(self.receiver_),
+            std::error_code{-self.result_, std::system_category()});
+      }
+    }
+
+    io_uring_context& context_;
+    int fd_;
+    Receiver receiver_;
+  };
+
+ public:
+  // Produces number of bytes read.
+  template <
+      template <typename...> class Variant,
+      template <typename...> class Tuple>
+  using value_types = Variant<Tuple<ssize_t>>;
+
+  template <template <typename...> class Variant>
+  using error_types = Variant<std::error_code>;
+
+  explicit accept_sender(
+      io_uring_context& context,
+      int fd) noexcept
+      : context_(context), fd_(fd) {}
+
+  template <typename Receiver>
+  operation<std::decay_t<Receiver>> connect(Receiver&& r) {
+    return operation<std::decay_t<Receiver>>{*this, (Receiver &&) r};
+  }
+
+ private:
+  io_uring_context& context_;
+  int fd_;
+};
+
 class io_uring_context::read_sender {
   using offset_t = std::uint64_t;
 
@@ -646,6 +746,50 @@ class io_uring_context::async_write_only_file {
   safe_file_descriptor fd_;
 };
 
+class io_uring_context::async_listen_socket {
+ public:
+  explicit async_listen_socket(io_uring_context& context, int fd) noexcept
+      : context_(context), fd_(fd) {}
+
+ private:
+  friend scheduler;
+
+  friend accept_sender tag_invoke(
+      tag_t<async_accept>,
+      async_listen_socket& file) noexcept {
+    return accept_sender{file.context_, file.fd_.get()};
+  }
+
+  io_uring_context& context_;
+  safe_file_descriptor fd_;
+};
+
+class io_uring_context::async_socket {
+ public:
+  explicit async_socket(io_uring_context& context, int fd) noexcept
+      : context_(context), fd_(fd) {}
+
+ private:
+  friend scheduler;
+
+  friend write_sender tag_invoke(
+      tag_t<async_write_some_at>,
+      async_socket& file,
+      span<const std::byte> buffer) noexcept {
+    return write_sender{file.context_, file.fd_.get(), -1, buffer};
+  }
+
+  friend read_sender tag_invoke(
+      tag_t<async_read_some_at>,
+      async_socket& file,
+      span<std::byte> buffer) noexcept {
+    return read_sender{file.context_, file.fd_.get(), -1, buffer};
+  }
+
+  io_uring_context& context_;
+  safe_file_descriptor fd_;
+};
+
 class io_uring_context::async_read_write_file {
  public:
   using offset_t = std::uint64_t;
@@ -882,6 +1026,14 @@ class io_uring_context::scheduler {
       tag_t<open_file_read_only>,
       scheduler s,
       const filesystem::path& path);
+  friend async_socket tag_invoke(
+      tag_t<open_socket>,
+      scheduler s,
+      const std::string& address);
+  friend async_listen_socket tag_invoke(
+      tag_t<open_listen_socket>,
+      scheduler s,
+      const std::string& address);
   friend async_read_write_file tag_invoke(
       tag_t<open_file_read_write>,
       scheduler s,

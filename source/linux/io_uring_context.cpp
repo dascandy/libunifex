@@ -784,6 +784,44 @@ bool io_uring_context::try_submit_timer_io_cancel() noexcept {
 
   return try_submit_io(populateSqe);
 }
+/*
+io_uring_context::async_socket tag_invoke(
+      tag_t<open_socket>,
+      io_uring_context::scheduler s,
+      const std::string& address) {
+// TODO
+  return {};
+}
+*/
+
+io_uring_context::async_listen_socket tag_invoke(
+      tag_t<open_listen_socket>,
+      io_uring_context::scheduler s,
+      const std::string& address, 
+      uint16_t port,
+      size_t listenCount) {
+  const struct addrinfo hint = {};
+  struct addrinfo* res;
+  int result = getaddrinfo(address.c_str(), std::to_string(port).c_str(), &hint, &res);
+  if (result < 0) {
+    int errorCode = errno;
+    throw std::system_error{errorCode, std::system_category()};
+  }
+
+  // TODO: the others
+  int fd = ::socket(res[0]->ai_family, res[0]->ai_socktype, res[0]->ai_protocol);
+  if (fd < 0) {
+    int errorCode = errno;
+    throw std::system_error{errorCode, std::system_category()};
+  }
+
+  result = ::listen(result, listenCount);
+  if (result < 0) {
+    int errorCode = errno;
+    throw std::system_error{errorCode, std::system_category()};
+  }
+  return io_uring_context::async_read_only_file{*scheduler.context_, fd};
+}
 
 io_uring_context::async_read_only_file tag_invoke(
     tag_t<open_file_read_only>,
