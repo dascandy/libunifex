@@ -778,7 +778,6 @@ class io_uring_context::async_socket {
       span<const std::byte> buffer) noexcept {
     return write_sender{file.context_, file.fd_.get(), -1, buffer};
   }
-
   friend read_sender tag_invoke(
       tag_t<async_read_some>,
       async_socket& file,
@@ -1033,7 +1032,9 @@ class io_uring_context::scheduler {
   friend async_listen_socket tag_invoke(
       tag_t<open_listen_socket>,
       scheduler s,
-      const std::string& address);
+      const std::string& address,
+      uint16_t port,
+      size_t listenCount);
   friend async_read_write_file tag_invoke(
       tag_t<open_file_read_write>,
       scheduler s,

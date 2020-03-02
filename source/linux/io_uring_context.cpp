@@ -36,6 +36,10 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+
 #include <cstdio>
 
 //#define LOGGING_ENABLED
@@ -800,7 +804,7 @@ io_uring_context::async_socket tag_invoke(
 
 io_uring_context::async_listen_socket tag_invoke(
       tag_t<open_listen_socket>,
-      io_uring_context::scheduler s,
+      io_uring_context::scheduler scheduler,
       const std::string& address, 
       uint16_t port,
       size_t listenCount) {
@@ -813,7 +817,7 @@ io_uring_context::async_listen_socket tag_invoke(
   }
 
   // TODO: the others
-  int fd = ::socket(res[0]->ai_family, res[0]->ai_socktype, res[0]->ai_protocol);
+  int fd = ::socket(res[0].ai_family, res[0].ai_socktype, res[0].ai_protocol);
   if (fd < 0) {
     int errorCode = errno;
     throw std::system_error{errorCode, std::system_category()};
@@ -824,7 +828,7 @@ io_uring_context::async_listen_socket tag_invoke(
     int errorCode = errno;
     throw std::system_error{errorCode, std::system_category()};
   }
-  return io_uring_context::async_read_only_file{*scheduler.context_, fd};
+  return io_uring_context::async_listen_socket{*scheduler.context_, fd};
 }
 
 io_uring_context::async_read_only_file tag_invoke(
