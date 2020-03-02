@@ -35,6 +35,42 @@ inline constexpr struct async_accept_cpo {
   }
 } async_accept;
 
+inline constexpr struct async_read_some_cpo {
+  template <typename AsyncFile, typename BufferSequence>
+  auto operator()(
+      AsyncFile& file,
+      BufferSequence&& bufferSequence) const
+      noexcept(is_nothrow_tag_invocable_v<
+               async_read_some_cpo,
+               AsyncFile&,
+               BufferSequence>)
+          -> tag_invoke_result_t<
+              async_read_some_cpo,
+              AsyncFile&,
+              BufferSequence> {
+    return unifex::tag_invoke(
+        *this, file, (BufferSequence &&) bufferSequence);
+  }
+} async_read_some;
+
+inline constexpr struct async_write_some_cpo {
+  template <typename AsyncFile, typename BufferSequence>
+  auto operator()(
+      AsyncFile& file,
+      BufferSequence&& bufferSequence) const
+      noexcept(is_nothrow_tag_invocable_v<
+               async_write_some_cpo,
+               AsyncFile&,
+               BufferSequence>)
+          -> tag_invoke_result_t<
+              async_write_some_cpo,
+              AsyncFile&,
+              BufferSequence> {
+    return unifex::tag_invoke(
+        *this, file, (BufferSequence &&) bufferSequence);
+  }
+} async_write_some;
+
 inline constexpr struct async_read_some_at_cpo {
   template <typename AsyncFile, typename BufferSequence>
   auto operator()(
