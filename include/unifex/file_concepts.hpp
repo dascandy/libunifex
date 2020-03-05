@@ -22,7 +22,7 @@
 namespace unifex {
 
 inline constexpr struct async_accept_cpo {
-  template <typename AsyncSocket, typename BufferSequence>
+  template <typename AsyncSocket>
   auto operator()(AsyncSocket& socket) const
       noexcept(is_nothrow_tag_invocable_v<
                async_accept_cpo,

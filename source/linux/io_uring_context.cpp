@@ -823,7 +823,13 @@ io_uring_context::async_listen_socket tag_invoke(
     throw std::system_error{errorCode, std::system_category()};
   }
 
-  result = ::listen(result, listenCount);
+  result = ::bind(fd, res[0].ai_addr, (int)res[0].ai_addrlen);
+  if (result < 0) {
+    int errorCode = errno;
+    throw std::system_error{errorCode, std::system_category()};
+  }
+
+  result = ::listen(fd, listenCount);
   if (result < 0) {
     int errorCode = errno;
     throw std::system_error{errorCode, std::system_category()};
